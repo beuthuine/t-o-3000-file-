@@ -1,0 +1,62 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <filesystem>
+#include <vector>
+using namespace std;
+namespace fs = std::filesystem;
+
+// Hàm hỗ trợ: tìm và ghi kết quả
+void timTuKhoaTrongFile(const string& filename, const string& keyword, ofstream& output) {
+    ifstream fin(filename);
+    if (!fin.is_open()) return;
+
+    string line;
+    int lineNum = 0;
+    while (getline(fin, line)) {
+        ++lineNum;
+        if (line.find(keyword) != string::npos) {
+            cout << filename << " - dòng " << lineNum << " - " << line << endl;
+            output << filename << " - dòng " << lineNum << " - " << line << endl;
+        }
+    }
+    fin.close();
+}
+
+int main() {
+    cout << "=================== FIND IN FILES ===================\n";
+    cout << "Find what: ";
+    string keyword;
+    getline(cin, keyword);
+
+    cout << "Directory (thư mục chứa log): ";
+    string directory;
+    getline(cin, directory);
+
+    cout << "\nĐang tìm kiếm từ khóa \"" << keyword << "\" trong thư mục: " << directory << endl;
+    cout << "----------------------------------------------------\n";
+
+    ofstream output("ketqua.txt");
+    if (!output.is_open()) {
+        cerr << "Không thể tạo file ketqua.txt!\n";
+        return 1;
+    }
+
+    int count = 0;
+    for (const auto& entry : fs::directory_iterator(directory)) {
+        if (entry.is_regular_file()) {
+            string path = entry.path().string();
+            if (path.find(".txt") != string::npos) {
+                timTuKhoaTrongFile(path, keyword, output);
+                ++count;
+            }
+        }
+    }
+
+    cout << "----------------------------------------------------\n";
+    cout << "✅ Đã quét " << count << " file. Kết quả lưu tại: ketqua.txt\n";
+    output.close();
+
+    system("pause");
+    return 0;
+}
