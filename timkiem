@@ -1,0 +1,100 @@
+// search_logs.cpp
+#include <bits/stdc++.h>
+#include <filesystem>
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+using namespace std;
+namespace fs = std::filesystem;
+
+int main(int argc, char* argv[]) {
+    const string log_dir = "logs";
+    const string keyword = "login by 99";
+    const string output_file = "ketqua.txt";
+
+    unsigned int num_threads = std::thread::hardware_concurrency();
+    if (num_threads == 0) num_threads = 4; // fallback
+    if (argc >= 2) {
+        try { num_threads = stoi(argv[1]); } catch(...) {}
+    }
+
+    // Lấy danh sách file .txt trong log_dir
+    if (!fs::exists(log_dir) || !fs::is_directory(log_dir)) {
+        cerr << "Thư mục '" << log_dir << "' không tồn tại.\n";
+        return 1;
+    }
+
+    vector<fs::path> files;
+    for (auto &p : fs::directory_iterator(log_dir)) {
+        if (p.is_regular_file() && p.path().extension() == ".txt") {
+            files.push_back(p.path());
+        }
+    }
+    sort(files.begin(), files.end());
+
+    cout << "Tìm trong " << files.size() << " file, dùng " << num_threads << " threads.\n";
+
+    // Chia công việc: dùng atomic index
+    atomic<size_t> idx(0);
+    mutex out_mtx;
+    ofstream ofs(output_file, ios::out);
+    if (!ofs) {
+        cerr << "Không thể mở file " << output_file << " để ghi.\n";
+        return 1;
+    }
+
+    auto worker = [&](int tid) {
+        while (true) {
+            size_t i = idx.fetch_add(1);
+            if (i >= files.size()) break;
+            const fs::path file = files[i];
+            ifstream ifs(file.string());
+            if (!ifs) {
+                lock_guard<mutex> lk(out_mtx);
+                cerr << "Thread " << tid << " không thể mở file: " << file << "\n";
+                continue;
+            }
+            string line;
+            size_t lineno = 0;
+            vector<string> local_results;
+            while (std::getline(ifs, line)) {
+                ++lineno;
+                // Tìm substring keyword
+                if (line.find(keyword) != string::npos) {
+                    // Format result line
+                    ostringstream oss;
+                    oss << "Tên file: " << file.filename().string()
+                        << " | Dòng: " << lineno
+                        << " | Nội dung: " << line;
+                    local_results.push_back(oss.str());
+                }
+            }
+            ifs.close();
+
+            if (!local_results.empty()) {
+                lock_guard<mutex> lk(out_mtx);
+                for (auto &r : local_results) {
+                    ofs << r << "\n";
+                }
+            }
+
+            // Optional: in tiến trình
+            if ((i + 1) % 100 == 0) {
+                lock_guard<mutex> lk(out_mtx);
+                cout << "Đã xử lý " << (i+1) << " / " << files.size() << " files\n";
+            }
+        }
+    };
+
+    // Tạo threads
+    vector<thread> threads;
+    threads.reserve(num_threads);
+    for (unsigned int t = 0; t < num_threads; ++t) threads.emplace_back(worker, (int)t);
+
+    for (auto &th : threads) th.join();
+
+    ofs.close();
+    cout << "Hoàn tất tìm kiếm. Kết quả được lưu trong '" << output_file << "'.\n";
+    return 0;
+}
